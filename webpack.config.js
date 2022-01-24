@@ -6,11 +6,12 @@ module.exports = (env, argv) => {
         mode: argv.mode || 'development',
         entry: './src/index.js',
         output: {
-            filename: 'dataLayer.min.js',
+            filename: 'dataLayer.js',
             path: path.resolve(__dirname, 'dist'),
         },
         plugins: [new webpack.DefinePlugin({
             WEBPACK_MODE: JSON.stringify(argv.mode),
-        })],        
+        })],
+        devtool: "inline-source-map"
     }
 };
