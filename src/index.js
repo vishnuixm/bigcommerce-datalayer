@@ -52,6 +52,7 @@ window.clShopifyTrack = function() {
         cartItems: htmlDecode("{{json cart.items}}"),
         checkoutId: '{{checkout.id}}' || undefined,
         orderId: '{{checkout.order.id}}' || undefined,
+        mainPageAjaxAddButton: false, // set true if the products list has ajax "add to cart" button
     }
 
     /**
@@ -62,15 +63,21 @@ window.clShopifyTrack = function() {
         productPageAddButton: [],
         cartPageRemoveButton: [],
         searchTermQuery: [],
-        searchPage: []
+        searchPage: [],
+        quickViewModal: [],
+        quickViewCartButtonId: [],
+        modalHiddenProductId: [],
     };
 
     var defaultBindings = {
         mainPageAddButton: ["[data-button-type='add-cart']"],
-        productPageAddButton: ["form-action-addToCart"],
-        cartPageRemoveButton: ["cart-remove"],
+        productPageAddButton: ["#form-action-addToCart"],
+        cartPageRemoveButton: [".cart-remove"],
         searchTermQuery: [getURLParams('search_query')],
-        searchPage: ['search']
+        searchPage: ['search'],
+        quickViewModal: ["#modal"],
+        quickViewCartButtonId: ["form-action-addToCart"],
+        modalHiddenProductId: ["#modal .productView-details.product-options [name='product_id']"]
     }
 
     // stitch bindings
@@ -102,56 +109,81 @@ window.clShopifyTrack = function() {
     */
 
     function addProductEventListeners() {
-        var mainPageAddButton =    document.querySelectorAll(__BC__.mainPageAddButton) || []; //Add to cart button selector
-        var productPageAddButton = document.getElementById(__BC__.productPageAddButton); //Add to cart form selector
-        var cartPageRemoveButton = document.getElementsByClassName(__BC__.cartPageRemoveButton) || []; //Remove from cart button selector
+        var mainPageAddButton    = Czzle(__BC__.mainPageAddButton)    || []; 
+        var productPageAddButton = Czzle(__BC__.productPageAddButton) || [];
+        var cartPageRemoveButton = Czzle(__BC__.cartPageRemoveButton) || [];
+        var quickViewModal = Czzle(__BC__.quickViewModal) || [];
 
 
         // Main Page - Add to Cart click
         if (mainPageAddButton.length > 0) {
-            mainPageAddButton.forEach((el) =>
+            for(var i = 0; i < mainPageAddButton.length; i++) {
+                const el = mainPageAddButton[i];
                 el.addEventListener('click', (event) => {
                     var index = event.target.href.indexOf('product_id');
                     var productId = event.target.href.slice(index).split('=')[1];
                     onAddToCart(productId, undefined);
                 })
-            );
+            }
         }
 
         // Product Page - Add to Cart click
-        if (productPageAddButton) {
-            productPageAddButton.addEventListener('click', () => {
-                onAddToCart('{{product.id}}', {
-                    "product_name": '{{product.title}}', // Name or ID is required.
-                    "product_id": '{{product.id}}',
-                    "product_price": '{{product.price.without_tax.value}}',
-                    "product_category": '{{product.category}}',
-                    "product_variant": '{{product.sku}}',
-                    "product_sku": '{{product.sku}}'
+        if (productPageAddButton.length > 0) {
+            for(var j = 0; j < productPageAddButton.length; j++) {
+                const el = productPageAddButton[j];
+                el.addEventListener('click', () => {
+                    onAddToCart('{{product.id}}', {
+                        "product_name": '{{product.title}}', // Name or ID is required.
+                        "product_id": '{{product.id}}',
+                        "product_price": '{{product.price.without_tax.value}}',
+                        "product_category": '{{product.category}}',
+                        "product_variant": '{{product.sku}}',
+                        "product_sku": '{{product.sku}}'
+                    });
                 });
-            });
+            }
         }
 
         // Remove from Cart click
         if (cartPageRemoveButton.length > 0) {
-            cartPageRemoveButton.forEach((el) =>
+            for(var k = 0; k < cartPageRemoveButton.length; k++) {
+                const el = cartPageRemoveButton[k];
                 el.addEventListener('click', () => {
                     onRemoveFromCart(el.attributes[1].nodeValue);
-                })
-            );
+                });
+            }
+        }
+
+        if (quickViewModal.length > 0) {
+            for(var l = 0; l < quickViewModal.length; l++) {
+                const el = quickViewModal[l];
+                el.addEventListener('click', (e) => {
+                    if(e.target && e.target.id == __BC__.quickViewCartButtonId) {
+                        const productId = document.querySelector(__BC__.modalHiddenProductId).value;
+                        onAddToCart(productId, undefined);
+                    }
+                });
+            }
         }
     }
 
-    /*
-    Datalayer events
-    */
+    /***
+     * Customerlabs default Ecommerce vents
+     */
 
-    // Measure product/item list views/impressions
+    
+    /**
+     * Tracks category views
+     * 
+     * @param {string} categoryName 
+     */
     function onCategoryView(categoryName) {
         _cl.pageview("Category viewed", {"customProperties": {"category_name": categoryName}})
     }
 
-    // Measure a view of product details. This example assumes the detail view occurs on pageload,
+    /**
+     * Tracks Product views
+     */
     function onProductDetailsView() {
         _cl.pageview("Product viewed", {
             "customProperties": {
@@ -170,7 +202,9 @@ window.clShopifyTrack = function() {
         })
     }
 
-    // This event signifies that a user viewed their cart.
+    /**
+     * This function handles cart visits and send it to clabs
+     */
     function onViewCart() {
         var products = __BC__.analyticsData.products || __BC__.cartItems || []
         var propertiesToSend = {
@@ -193,10 +227,19 @@ window.clShopifyTrack = function() {
         _cl.pageview("Cart viewed", propertiesToSend)
     }
 
-    // Measure when a product is added to a shopping cart
+    /**
+     * This function taks 2 arguments productId and product object
+     * If product object present will send added to cart event
+     * else this function called from product list with product id
+     *         so we add a cookie and wait
+     * some times the list product button will be ajax in that time
+     * will invoke the function findATCAndSend that will get data from
+     * cart and send added to cart event to clabs
+     * @param {string} productId
+     * @param {object} product
+     */
     function onAddToCart(productId, product) {
         if(product){
-            console.log(product)
             propertiesToSend = {
                 'customProperties': {
                     "product_category": "product_group",
@@ -204,12 +247,19 @@ window.clShopifyTrack = function() {
                 },
                 'productProperties': [product]
             };
-            _cl.trackClick("Add to Cart", propertiesToSend)
+            _cl.trackClick("Added to cart", propertiesToSend)
         }else{
             set_cookie("cl_bc_ajax_atc_" + productId, productId);
+            if(__BC__.mainPageAjaxAddButton){
+                findATCAndSend();
+            }
         }
     }
 
+    /**
+     * This function handles remove from cart event
+     * @param {string} cartItemId 
+     */
     function onRemoveFromCart(cartItemId) {
         var products = __BC__.analyticsData.products || __BC__.cartItems || []
         for(var id in products){
@@ -233,6 +283,9 @@ window.clShopifyTrack = function() {
         }
     }
 
+    /**
+     * This function invoke when a checkout initated
+     */
     function onCheckoutStarted() {
         var props = {};
         var analyticsData = __BC__.analyticsData;
@@ -248,6 +301,9 @@ window.clShopifyTrack = function() {
        _cl.pageview("Checkout made", propertiesToSend)
     }
 
+    /**
+     * This function is triggered on the order confirmation page
+     */
     function onPurchase() {
         var customProps = {};
         var analyticsData = __BC__.analyticsData;
@@ -262,8 +318,18 @@ window.clShopifyTrack = function() {
             "productProperties": analyticsData.products
         }
         
-        _cl.pageview("Purchased", propertiesToSend)
-
+        if(analyticsData.order_id && window.localStorage){
+            var purchases_str = localStorage.getItem('cl_past_purchases') || "{}";
+            var purchases = JSON.parse(purchases_str);
+            if(!purchases[""+analyticsData.order_id]){
+                _cl.trackClick('Purchased', propertiesToSend);
+                purchases[""+analyticsData.order_id] = "true";
+                window.localStorage.setItem("cl_past_purchases", JSON.stringify(purchases));
+            }
+        }else{
+            _cl.trackClick('Purchased', propertiesToSend);
+        }
+        
         if(analyticsData.billingInfo){
             var userAttributes = {};
             var billingInfo = analyticsData.billingInfo;
@@ -284,7 +350,7 @@ window.clShopifyTrack = function() {
                         },
                         "identify_by_email": {
                             "t":"string",
-                            "v": userAttributes["email"],
+                            "v": userAttributes["email"].v,
                             "ib": true
                         }
                     }
@@ -414,6 +480,7 @@ window.clShopifyTrack = function() {
                             "product_category": product.category | "",
                             "product_sku": product.sku
                         });
+                        delete_cookie("cl_bc_ajax_atc_" + product.productId);
                     }
                 }
             }
