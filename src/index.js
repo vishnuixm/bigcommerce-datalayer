@@ -111,7 +111,6 @@ window.clShopifyTrack = function() {
     function addProductEventListeners() {
         var mainPageAddButton    = Czzle(__BC__.mainPageAddButton)    || []; 
         var productPageAddButton = Czzle(__BC__.productPageAddButton) || [];
-        var cartPageRemoveButton = Czzle(__BC__.cartPageRemoveButton) || [];
         var quickViewModal = Czzle(__BC__.quickViewModal) || [];
 
 
@@ -145,14 +144,7 @@ window.clShopifyTrack = function() {
         }
 
         // Remove from Cart click
-        if (cartPageRemoveButton.length > 0) {
-            for(var k = 0; k < cartPageRemoveButton.length; k++) {
-                const el = cartPageRemoveButton[k];
-                el.addEventListener('click', () => {
-                    onRemoveFromCart(el.attributes[1].nodeValue);
-                });
-            }
-        }
+        setRemoveCartListener();
 
         if (quickViewModal.length > 0) {
             for(var l = 0; l < quickViewModal.length; l++) {
@@ -162,6 +154,19 @@ window.clShopifyTrack = function() {
                         const productId = document.querySelector(__BC__.modalHiddenProductId).value;
                         onAddToCart(productId, undefined);
                     }
+                });
+            }
+        }
+    }
+
+    function setRemoveCartListener() {
+        var cartPageRemoveButton = Czzle(__BC__.cartPageRemoveButton) || [];
+
+        if (cartPageRemoveButton.length > 0) {
+            for(var k = 0; k < cartPageRemoveButton.length; k++) {
+                const el = cartPageRemoveButton[k];
+                el.addEventListener('click', () => {
+                    onRemoveFromCart(el.attributes[1].nodeValue);
                 });
             }
         }
@@ -486,6 +491,24 @@ window.clShopifyTrack = function() {
             }
         });
     }
+
+    function initRemoveFromCartObserver() {
+        var MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
+        function checkChanges(mutations) {
+            for (let mutation of mutations) {
+                if (mutation.type === 'childList') {
+                    mutation.addedNodes.forEach(element => {
+                        if(element.className == "cart"){
+                            setRemoveCartListener();
+                        }
+                    });
+                }
+            }
+        }
+        var observer = new MutationObserver(checkChanges);
+        var target = document.querySelector(".body")
+        observer.observe(target, {childList: true, subtree: true})
+    }
     
     
     /*
@@ -513,6 +536,7 @@ window.clShopifyTrack = function() {
             break;    
         case 'cart':
             onViewCart();
+            initRemoveFromCartObserver();
             break;    
         default:
             if (__BC__.pageType === 'search' || document.location.pathname.match(searchPage)){
